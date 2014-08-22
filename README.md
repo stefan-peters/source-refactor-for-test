@@ -1,4 +1,4 @@
-source-refactor-for-test
-========================
+test-compiler
+=============
 
-small program to refactor c/cpp source for testing
+A small project to play around with  clang a bit to extract meta information useful for testing
