@@ -1,4 +1,11 @@
-test-compiler
-=============
+# Source 2 Test Refactor
 
-A small project to play around with  clang a bit to extract meta information useful for testing
+A small tool, that refactors c/cpp source to support testing
+
+## Features (planned)
+
+  - add missing else to single ifs
+  - prettify code (clang-format like)
+
+## Features (implemented)
+
