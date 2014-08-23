@@ -9,6 +9,7 @@ A small tool, that refactors c/cpp source to support testing
   - prettify code (clang-format like)
   - extract static const <type>... inside functions into a visible scope
   - extract static <type> inside functions into a visible scope
+  - handle inline methods in headers in some way it can be stubbed
 
 ## Features (implemented)
 
