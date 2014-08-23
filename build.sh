@@ -14,5 +14,4 @@ if [[ ! -e "$BUILD_DIR" ]]; then
 fi;
 
 cd "$BUILD_DIR";
-make && ./lib/test_enums.cpp
-#ctest --verbose
+make && ctest --verbose
