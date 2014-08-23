@@ -1,5 +1,4 @@
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include "test.h"
 
 // this file is just the runner for all tests in this folder
 
