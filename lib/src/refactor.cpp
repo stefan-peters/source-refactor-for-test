@@ -1,46 +1,104 @@
-// Declares clang::SyntaxOnlyAction.
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendAction.h"
-#include <clang/AST/ASTContext.h>
-
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h" 
+#include "clang/AST/ASTContext.h"
+#include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
 
 using namespace clang::tooling;
 using namespace llvm;
 using namespace clang;
+using namespace clang::ast_matchers;
+using namespace clang::driver;
 
 #include <s2tr/refactor.h>
+
 #include <algorithm>
+#include <memory>
 
-// // Apply a custom category to all command-line options so that they are the
-// // only ones displayed.
-// static llvm::cl::OptionCategory MyToolCategory("my-tool options");
 
-// // CommonOptionsParser declares HelpMessage with a description of the common
-// // command-line options related to the compilation database and input files.
-// // It's nice to have this help message in all tools.
-// static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
+class RefactoringCustomer : public clang::ASTConsumer {
+public:
+  explicit RefactoringCustomer(ASTContext *Context, MatchFinder* matcher_) : matcher(matcher_) {}
 
-// // A help message for this specific tool can be added afterwards.
-// static cl::extrahelp MoreHelp("\nMore help text...");
+  virtual void HandleTranslationUnit(clang::ASTContext &Context) {
+    matcher->matchAST(Context);
+  }
 
-// int main(int argc, const char **argv) {
+private:
+  MatchFinder* matcher;
+};
 
-// CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
-// ClangTool Tool(OptionsParser.getCompilations(),
-//                OptionsParser.getSourcePathList());
-// return Tool.run(newFrontendActionFactory<clang::SyntaxOnlyAction>().get());
+
+class RefactoringAction : public clang::ASTFrontendAction {
+
+public:
+
+  RefactoringAction(MatchFinder* matcher_, Rewriter* rewriter_) : matcher(matcher_), rewriter(rewriter_) {}
+
+  virtual clang::ASTConsumer * CreateASTConsumer(clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
+    rewriter->setSourceMgr(Compiler.getSourceManager(), Compiler.getLangOpts());
+    return new RefactoringCustomer(&Compiler.getASTContext(), matcher);
+  }
+
+
+private:
+  MatchFinder* matcher;
+  Rewriter* rewriter;
+};
+
+
+class IfStmtHandler : public MatchFinder::MatchCallback {
+public:
+  IfStmtHandler(Rewriter *rewriter_) : rewriter(rewriter_) {}
+
+  virtual void run(const MatchFinder::MatchResult &Result) {
+    // The matched 'if' statement was bound to 'ifStmt'.
+    if (const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt")) {
+      const Stmt *Then = IfS->getThen();
+      llvm::outs() << "FOUND IF";
+      // Replacement Rep(*(Result.SourceManager), Then->getLocStart(), 0,
+      //                 "// the 'if' part\n");
+      // Replace->insert(Rep);
+            rewriter->InsertText(Then->getLocStart(), "// the 'if' part\n", true,
+                             true);
+
+      if (const Stmt *Else = IfS->getElse()) {
+        llvm::outs() << "FOUND ELSE";
+        // Replacement Rep(*(Result.SourceManager), Else->getLocStart(), 0,
+        //                 "// the 'else' part\n");
+        // Replace->insert(Rep);
+        rewriter->InsertText(Else->getLocStart(), "// the 'else' part\n",
+                               true, true);
+      }
+    }
+  }
+
+
+private:
+  Rewriter *rewriter;
+};
 
 
 namespace s2tr {
 
   std::string refactor(const std::string& code, const std::vector<std::string>& args) {
+
+    Rewriter rewriter;
+    IfStmtHandler HandlerForIf(&rewriter);
+
+    MatchFinder Finder;
+    Finder.addMatcher(ifStmt().bind("ifStmt"), &HandlerForIf);
+
+    auto action = new RefactoringAction(&Finder, &rewriter);
+    runToolOnCodeWithArgs(action, code, args);
+
+    rewriter.getEditBuffer(rewriter.getSourceMgr().getMainFileID()).write(errs());
+
     return code;
   }
 }
