@@ -47,7 +47,14 @@ if(BUILD_TESTS)
 	  	add_executable(${test_name} ${source} "tests/main.cpp")
 		add_dependencies(${test_name} GMockExternal ${LIB_NAME})
 
-		target_link_libraries(${test_name} ${GMOCK_LIBS} ${LIB_NAME})
+		target_link_libraries(${test_name} 
+			${GMOCK_LIBS} 
+			${LIB_NAME} 	
+			${LLVM_LDFLAGS}
+			${CLANG_LIBS}
+			${LLVM_MODULE_LIBS}
+			${LLVM_SYSTEM_LIBS}
+		)
 	  	add_test(NAME ${test_name} COMMAND ${test_name})
 	endmacro()
 

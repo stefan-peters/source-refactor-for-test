@@ -5,82 +5,86 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Tooling/Refactoring.h"
+#include "clang/Lex/Lexer.h"
 
 using namespace clang::tooling;
 using namespace llvm;
 using namespace clang;
 using namespace clang::ast_matchers;
-using namespace clang::driver;
 
 #include <s2tr/refactor.h>
 
 #include <algorithm>
 #include <memory>
 
+std::string pdump(const SourceLocation& sl, SourceManager& mgr) {
+  return mgr.getCharacterData(sl);
+  //llvm::outs() << std::string(" ", mgr.getPresumedColumnNumber(sl) -1) << "^\n";
+}
 
-class RefactoringCustomer : public clang::ASTConsumer {
-public:
-  explicit RefactoringCustomer(ASTContext *Context, MatchFinder* matcher_) : matcher(matcher_) {}
+bool embrace(const Stmt* stmt, const MatchFinder::MatchResult &Result, Replacements* replacements) {
+      
+      if(stmt and not isa<CompoundStmt>(stmt)) {
+        Replacement add_first(*(Result.SourceManager), stmt->getLocStart(), 0 , "{");
+        replacements->insert(add_first);
 
-  virtual void HandleTranslationUnit(clang::ASTContext &Context) {
-    matcher->matchAST(Context);
-  }
+        llvm::outs() << "THEN START: " << pdump(stmt->getLocStart(), *Result.SourceManager) << "\n";
 
-private:
-  MatchFinder* matcher;
-};
-
-
-class RefactoringAction : public clang::ASTFrontendAction {
-
-public:
-
-  RefactoringAction(MatchFinder* matcher_, Rewriter* rewriter_) : matcher(matcher_), rewriter(rewriter_) {}
-
-  virtual clang::ASTConsumer * CreateASTConsumer(clang::CompilerInstance &Compiler, llvm::StringRef InFile) {
-    rewriter->setSourceMgr(Compiler.getSourceManager(), Compiler.getLangOpts());
-    return new RefactoringCustomer(&Compiler.getASTContext(), matcher);
-  }
+        SourceLocation end = stmt->getLocEnd();
+        llvm::outs() << "THEN END: " << pdump(end, *Result.SourceManager) << "\n";
+        const int offset = Lexer::MeasureTokenLength(end,
+                                           *(Result.SourceManager),
+                                           Result.Context->getLangOpts()) + 1;
+        Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0 , "}");
+        replacements->insert(add_last);
+        return true;
+      }
+      else {
+        return false;
+      }
+}
 
 
-private:
-  MatchFinder* matcher;
-  Rewriter* rewriter;
-};
+void append_else(const Stmt* stmt, const MatchFinder::MatchResult &Result, Replacements* replacements) {
+        SourceLocation end = stmt->getLocEnd();
+        //llvm::outs() << end.printToString(*Result.SourceManager) << "\n";
+        //pdump(end, *Result.SourceManager);
+
+        int offset = Lexer::MeasureTokenLength(end,
+                                           *(Result.SourceManager),
+                                           Result.Context->getLangOpts());
+        Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0 , "}else {}");
+        replacements->insert(add_last);
+}
 
 
 class IfStmtHandler : public MatchFinder::MatchCallback {
+
 public:
-  IfStmtHandler(Rewriter *rewriter_) : rewriter(rewriter_) {}
+
+  IfStmtHandler(Replacements* re) : Replace(re) {}
 
   virtual void run(const MatchFinder::MatchResult &Result) {
-    // The matched 'if' statement was bound to 'ifStmt'.
+    
     if (const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt")) {
-      const Stmt *Then = IfS->getThen();
-      llvm::outs() << "FOUND IF";
-      // Replacement Rep(*(Result.SourceManager), Then->getLocStart(), 0,
-      //                 "// the 'if' part\n");
-      // Replace->insert(Rep);
-            rewriter->InsertText(Then->getLocStart(), "// the 'if' part\n", true,
-                             true);
+
+      embrace(IfS->getThen(), Result, Replace);
 
       if (const Stmt *Else = IfS->getElse()) {
-        llvm::outs() << "FOUND ELSE";
-        // Replacement Rep(*(Result.SourceManager), Else->getLocStart(), 0,
-        //                 "// the 'else' part\n");
-        // Replace->insert(Rep);
-        rewriter->InsertText(Else->getLocStart(), "// the 'else' part\n",
-                               true, true);
+        embrace(Else, Result, Replace);
+      }
+      else{
+        append_else(IfS, Result, Replace);
       }
     }
   }
 
 
 private:
-  Rewriter *rewriter;
+  Replacements* Replace;
 };
 
 
@@ -88,17 +92,14 @@ namespace s2tr {
 
   std::string refactor(const std::string& code, const std::vector<std::string>& args) {
 
-    Rewriter rewriter;
-    IfStmtHandler HandlerForIf(&rewriter);
+    Replacements re;
+    IfStmtHandler HandlerForIf(&re);
 
     MatchFinder Finder;
     Finder.addMatcher(ifStmt().bind("ifStmt"), &HandlerForIf);
+    auto Factory(newFrontendActionFactory(&Finder));
 
-    auto action = new RefactoringAction(&Finder, &rewriter);
-    runToolOnCodeWithArgs(action, code, args);
-
-    rewriter.getEditBuffer(rewriter.getSourceMgr().getMainFileID()).write(errs());
-
-    return code;
+    runToolOnCodeWithArgs(Factory->create(), code, args);
+    return applyAllReplacements(code, re);
   }
 }

@@ -5,4 +5,6 @@ TEST(HelperTests, FormatTest) {
 		f("string and  ws"),
 		f("   string  and ws  ")
 	);
+
+	EXPECT_NE("", f("sd sd sd"));
 }
