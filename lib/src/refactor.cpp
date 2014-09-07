@@ -21,7 +21,7 @@ using namespace clang::ast_matchers;
 #include <memory>
 
 std::string pdump(const SourceLocation& sl, SourceManager& mgr) {
-  return mgr.getCharacterData(sl);
+  return std::string(mgr.getCharacterData(SourceRange(sl).getBegin())) + ":" + std::string(mgr.getCharacterData(SourceRange(sl).getEnd()));
   //llvm::outs() << std::string(" ", mgr.getPresumedColumnNumber(sl) -1) << "^\n";
 }
 
@@ -31,15 +31,16 @@ bool embrace(const Stmt* stmt, const MatchFinder::MatchResult &Result, Replaceme
         Replacement add_first(*(Result.SourceManager), stmt->getLocStart(), 0 , "{");
         replacements->insert(add_first);
 
-        llvm::outs() << "THEN START: " << pdump(stmt->getLocStart(), *Result.SourceManager) << "\n";
+        //llvm::outs() << "THEN START: " << pdump(stmt->getLocStart(), *Result.SourceManager) << "\n";
 
         SourceLocation end = stmt->getLocEnd();
-        llvm::outs() << "THEN END: " << pdump(end, *Result.SourceManager) << "\n";
+        //llvm::outs() << "THEN END: " << pdump(end, *Result.SourceManager) << "\n";
         const int offset = Lexer::MeasureTokenLength(end,
                                            *(Result.SourceManager),
                                            Result.Context->getLangOpts()) + 1;
         Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0 , "}");
         replacements->insert(add_last);
+
         return true;
       }
       else {
@@ -48,15 +49,18 @@ bool embrace(const Stmt* stmt, const MatchFinder::MatchResult &Result, Replaceme
 }
 
 
-void append_else(const Stmt* stmt, const MatchFinder::MatchResult &Result, Replacements* replacements) {
-        SourceLocation end = stmt->getLocEnd();
-        //llvm::outs() << end.printToString(*Result.SourceManager) << "\n";
-        //pdump(end, *Result.SourceManager);
+void append_else(const IfStmt* stmt, const MatchFinder::MatchResult &Result, Replacements* replacements) {
+        SourceLocation end = stmt->getThen()->getLocEnd();
+        llvm::outs() << end.printToString(*Result.SourceManager) << "\n";
+        llvm::outs() << "ELSE: " << pdump(end, *Result.SourceManager) << "\n";
 
-        int offset = Lexer::MeasureTokenLength(end,
-                                           *(Result.SourceManager),
-                                           Result.Context->getLangOpts());
-        Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0 , "}else {}");
+        int offset = 1;
+
+        if(not isa<CompoundStmt>(stmt->getThen())) {
+          offset = Lexer::MeasureTokenLength(end, *(Result.SourceManager), Result.Context->getLangOpts());
+        }
+
+        Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0 , " else {}");
         replacements->insert(add_last);
 }
 
@@ -71,14 +75,19 @@ public:
     
     if (const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt")) {
 
-      embrace(IfS->getThen(), Result, Replace);
-
-      if (const Stmt *Else = IfS->getElse()) {
-        embrace(Else, Result, Replace);
-      }
-      else{
+      const Stmt *Else = IfS->getElse();
+      
+      if (not Else) {
         append_else(IfS, Result, Replace);
       }
+      else if (not isa<CompoundStmt>(Else)) {
+        embrace(Else, Result, Replace);
+      }
+
+      if (not isa<CompoundStmt>(IfS->getThen())) {
+        embrace(IfS->getThen(), Result, Replace);
+      }
+
     }
   }
 
@@ -100,6 +109,9 @@ namespace s2tr {
     auto Factory(newFrontendActionFactory(&Finder));
 
     runToolOnCodeWithArgs(Factory->create(), code, args);
+    // for(auto r : re) {
+    //   llvm::outs() << r.toString() << "\n";
+    // }
     return applyAllReplacements(code, re);
   }
 }

@@ -2,6 +2,7 @@
 #define TEST_H
 
 #include <string>
+#include <iostream>
 #include <algorithm>
 
 #include "gmock/gmock.h"
@@ -15,12 +16,18 @@ inline std::string f(const std::string& str) {
 	using namespace clang::format;
 
 	std::string s = str;
+//	s.erase( std::remove_if( s.begin(), s.end(), ::isspace ), s.end() );
 
 	std::vector<tooling::Range> ranges(1, tooling::Range(0, str.length()));
     tooling::Replacements replaces = reformat(getGoogleStyle(FormatStyle::LK_Cpp), str, ranges);
+
     return applyAllReplacements(str, replaces);
-	// s.erase( std::remove_if( s.begin(), s.end(), ::isspace ), s.end() );
-	// return s;
+//	return s;
+}
+
+
+inline std::string code(const std::string& str) {
+	return std::string("void code() { ") + str + std::string(" }");
 }
 
 #endif
