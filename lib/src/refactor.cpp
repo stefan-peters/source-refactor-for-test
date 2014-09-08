@@ -85,12 +85,15 @@ void dumpLocation(const std::string pre, const SourceLocation &s,
   llvm::outs() << pre << " : '" << l << "'\n";
 }
 
+
+
+
 bool embrace(const Stmt *stmt, const MatchFinder::MatchResult &Result,
-             Replacements *replacements) {
+             ReplacementHandler *replacements) {
 
   if (stmt and not isa<CompoundStmt>(stmt)) {
     Replacement add_first(*(Result.SourceManager), stmt->getLocStart(), 0, "{");
-    replacements->insert(add_first);
+    replacements->add(add_first);
 
     // llvm::outs() << "THEN START: " << pdump(stmt->getLocStart(),
     // *Result.SourceManager) << "\n";
@@ -100,25 +103,10 @@ bool embrace(const Stmt *stmt, const MatchFinder::MatchResult &Result,
     // "\n";
     const int offset =
         Lexer::MeasureTokenLength(end, *(Result.SourceManager),
-                                  Result.Context->getLangOpts()) +
-        1;
+                                  Result.Context->getLangOpts());
 
-    for (int i = 0; i < 4; ++i) {
-      dumpLocation(std::string("with offset ") + std::to_string(i),
-                   stmt->getLocStart(), end.getLocWithOffset(i),
-                   *(Result.SourceManager));
-    }
-
-    {
-      Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(1), 0,
-                           "[");
-      replacements->insert(add_last);
-    }
-    {
-      Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(1), 0,
-                           "]");
-      replacements->insert(add_last);
-    }
+    Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0, "}");
+    replacements->add(add_last);
 
     return true;
   } else {
@@ -127,7 +115,7 @@ bool embrace(const Stmt *stmt, const MatchFinder::MatchResult &Result,
 }
 
 void append_else(const IfStmt *stmt, const MatchFinder::MatchResult &Result,
-                 Replacements *replacements) {
+                 ReplacementHandler *replacements) {
   SourceLocation end = stmt->getThen()->getLocEnd();
   // llvm::outs() << end.printToString(*Result.SourceManager) << "\n";
   // llvm::outs() << "ELSE: " << pdump(end, *Result.SourceManager) << "\n";
@@ -141,26 +129,24 @@ void append_else(const IfStmt *stmt, const MatchFinder::MatchResult &Result,
 
   Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0,
                        " else {}");
-  replacements->insert(add_last);
+  replacements->add(add_last);
 }
 
 class IfStmtHandler : public MatchFinder::MatchCallback {
 
 public:
-  IfStmtHandler(Replacements *re) : Replace(re) {}
+  IfStmtHandler(ReplacementHandler *re) : Replace(re) {}
 
   virtual void run(const MatchFinder::MatchResult &Result) {
 
     if (const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt")) {
 
-      dumpLocation("IF: ", IfS, *(Result.SourceManager));
-
       const Stmt *Else = IfS->getElse();
-      dumpLocation("ELSE: ", Else, *(Result.SourceManager));
 
       if (not Else) {
         append_else(IfS, Result, Replace);
-      } else if (not isa<CompoundStmt>(Else)) {
+      } 
+      else if (not isa<CompoundStmt>(Else)) {
         embrace(Else, Result, Replace);
       }
 
@@ -171,7 +157,7 @@ public:
   }
 
 private:
-  Replacements *Replace;
+  ReplacementHandler *Replace;
 };
 
 namespace s2tr {
@@ -179,7 +165,7 @@ namespace s2tr {
 std::string refactor(const std::string &code,
                      const std::vector<std::string> &args) {
 
-  Replacements re;
+  ReplacementHandler re;
   IfStmtHandler HandlerForIf(&re);
 
   MatchFinder Finder;
@@ -190,6 +176,6 @@ std::string refactor(const std::string &code,
   // for(auto r : re) {
   //   llvm::outs() << r.toString() << "\n";
   // }
-  return applyAllReplacements(code, re);
+  return ::applyAllReplacements(code, re.TUReplacement.Replacements);
 }
 }

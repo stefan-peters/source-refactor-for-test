@@ -7,7 +7,7 @@ using namespace clang::tooling;
 
 
 class ReplacementHandler {
-
+public:
 	TranslationUnitReplacements TUReplacement;
 
 public:
