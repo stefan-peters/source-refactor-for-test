@@ -51,7 +51,7 @@ std::string applyAllReplacements(StringRef Code,
   }
   std::string Result;
   llvm::raw_string_ostream OS(Result);
-  Rewrite.getEditBuffer(ID).write(OS); 
+  Rewrite.getEditBuffer(ID).write(OS);
   OS.flush();
   return Result;
 }
@@ -85,27 +85,21 @@ void dumpLocation(const std::string pre, const SourceLocation &s,
   llvm::outs() << pre << " : '" << l << "'\n";
 }
 
-
-
-
 bool embrace(const Stmt *stmt, const MatchFinder::MatchResult &Result,
              ReplacementHandler *replacements) {
 
   if (stmt and not isa<CompoundStmt>(stmt)) {
+
     Replacement add_first(*(Result.SourceManager), stmt->getLocStart(), 0, "{");
     replacements->add(add_first);
 
-    // llvm::outs() << "THEN START: " << pdump(stmt->getLocStart(),
-    // *Result.SourceManager) << "\n";
-
     SourceLocation end = stmt->getLocEnd();
-    // llvm::outs() << "THEN END: " << pdump(end, *Result.SourceManager) <<
-    // "\n";
-    const int offset =
-        Lexer::MeasureTokenLength(end, *(Result.SourceManager),
-                                  Result.Context->getLangOpts());
 
-    Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0, "}");
+    const int offset = Lexer::MeasureTokenLength(end, *(Result.SourceManager),
+                                                 Result.Context->getLangOpts());
+
+    Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset),
+                         0, "}");
     replacements->add(add_last);
 
     return true;
@@ -117,15 +111,9 @@ bool embrace(const Stmt *stmt, const MatchFinder::MatchResult &Result,
 void append_else(const IfStmt *stmt, const MatchFinder::MatchResult &Result,
                  ReplacementHandler *replacements) {
   SourceLocation end = stmt->getThen()->getLocEnd();
-  // llvm::outs() << end.printToString(*Result.SourceManager) << "\n";
-  // llvm::outs() << "ELSE: " << pdump(end, *Result.SourceManager) << "\n";
 
-  int offset = 1;
-
-  if (not isa<CompoundStmt>(stmt->getThen())) {
-    offset = Lexer::MeasureTokenLength(end, *(Result.SourceManager),
-                                       Result.Context->getLangOpts());
-  }
+  const int offset = Lexer::MeasureTokenLength(end, *(Result.SourceManager),
+                                               Result.Context->getLangOpts());
 
   Replacement add_last(*(Result.SourceManager), end.getLocWithOffset(offset), 0,
                        " else {}");
@@ -145,8 +133,7 @@ public:
 
       if (not Else) {
         append_else(IfS, Result, Replace);
-      } 
-      else if (not isa<CompoundStmt>(Else)) {
+      } else if (not isa<CompoundStmt>(Else)) {
         embrace(Else, Result, Replace);
       }
 
